@@ -1,0 +1,79 @@
+{
+  "schema": "eva.veritas-plan.v1",
+  "generated_at": "2026-02-25T06:37:08.958Z",
+  "generated_from": [
+    "PLAN.md"
+  ],
+  "format_detected": "veritas",
+  "prefix": "F15",
+  "features": [
+    {
+      "id": "F15-01",
+      "title": "Purpose",
+      "source_heading": "## Feature: Purpose [ID=F15-01]",
+      "stories": []
+    },
+    {
+      "id": "F15-02",
+      "title": "?? Prerequisites (Week 0 - MUST COMPLETE FIRST)",
+      "source_heading": "## Feature: ?? Prerequisites (Week 0 - MUST COMPLETE FIRST) [ID=F15-02]",
+      "stories": []
+    },
+    {
+      "id": "F15-03",
+      "title": "Quick Start",
+      "source_heading": "## Feature: Quick Start [ID=F15-03]",
+      "stories": []
+    },
+    {
+      "id": "F15-04",
+      "title": "Architecture Overview",
+      "source_heading": "## Feature: Architecture Overview [ID=F15-04]",
+      "stories": [
+        {
+          "id": "F15-04-001",
+          "title": "Two-Plane Architecture",
+          "feature_id": "F15-04",
+          "source": "heading",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "id": "F15-05",
+      "title": "Key Concepts",
+      "source_heading": "## Feature: Key Concepts [ID=F15-05]",
+      "stories": []
+    },
+    {
+      "id": "F15-06",
+      "title": "Documentation Index",
+      "source_heading": "## Feature: Documentation Index [ID=F15-06]",
+      "stories": []
+    },
+    {
+      "id": "F15-07",
+      "title": "Implementation Status",
+      "source_heading": "## Feature: Implementation Status [ID=F15-07]",
+      "stories": []
+    },
+    {
+      "id": "F15-08",
+      "title": "Quick Reference",
+      "source_heading": "## Feature: Quick Reference [ID=F15-08]",
+      "stories": []
+    },
+    {
+      "id": "F15-09",
+      "title": "Contributing",
+      "source_heading": "## Feature: Contributing [ID=F15-09]",
+      "stories": []
+    },
+    {
+      "id": "F15-10",
+      "title": "References",
+      "source_heading": "## Feature: References [ID=F15-10]",
+      "stories": []
+    }
+  ]
+}

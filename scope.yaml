@@ -1,0 +1,366 @@
+# cdc/scope.yaml
+# Purpose:
+#   Define corpus scopes with validation rules, SLO tiers, and time windows.
+#   Each scope_id represents a reproducible CDC partition with freshness guarantees.
+#
+# Version: 1.0.0
+# Last Updated: 2026-01-28
+# Owner: AICOE
+
+version: "1.0.0"
+owner: "AICOE"
+last_updated: "2026-01-28"
+
+# ==============================================================================
+# SCOPE DEFINITIONS
+# ==============================================================================
+# Each scope represents a manageable partition of the jurisprudence corpus
+# Format: {tribunal}-{division}-{language}-{timewindow}
+
+scopes:
+  # ---------------------------------------------------------------------------
+  # Social Security Tribunal - General Division (Mutable, Daily Polling)
+  # ---------------------------------------------------------------------------
+  - scope_id: "SST-GD-EN-rolling-24mo"
+    description: "Social Security Tribunal - General Division, English, last 24 months"
+    tribunal_id: "SST-GD"
+    language: "EN"
+    time_window:
+      type: "rolling"
+      months: 24
+      description: "Last 24 months from today (dynamic window)"
+    polling_cadence: "daily"
+    slo_tier: 2
+    event_driven: false
+    immutability_class: "mutable"
+    enabled: true
+    notes:
+      - "SST decisions may be amended within weeks of publication"
+      - "Daily polling required to catch corrections and new decisions"
+      - "Represents active operational guidance for EI appeals"
+
+  - scope_id: "SST-GD-FR-rolling-24mo"
+    description: "Tribunal de la sécurité sociale - Division générale, French, last 24 months"
+    tribunal_id: "SST-GD"
+    language: "FR"
+    time_window:
+      type: "rolling"
+      months: 24
+    polling_cadence: "daily"
+    slo_tier: 2
+    event_driven: false
+    immutability_class: "mutable"
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # Social Security Tribunal - Appeal Division (Mutable, Daily Polling)
+  # ---------------------------------------------------------------------------
+  - scope_id: "SST-AD-EN-rolling-36mo"
+    description: "SST Appeals Division, English, last 36 months"
+    tribunal_id: "SST-AD"
+    language: "EN"
+    time_window:
+      type: "rolling"
+      months: 36
+      description: "Last 36 months (precedential value higher, longer retention)"
+    polling_cadence: "daily"
+    slo_tier: 2
+    event_driven: false
+    immutability_class: "mutable"
+    enabled: true
+    notes:
+      - "Appeal Division decisions have higher precedential weight"
+      - "Longer rolling window (36mo) vs General Division (24mo)"
+
+  - scope_id: "SST-AD-FR-rolling-36mo"
+    description: "TSS Division d'appel, French, last 36 months"
+    tribunal_id: "SST-AD"
+    language: "FR"
+    time_window:
+      type: "rolling"
+      months: 36
+    polling_cadence: "daily"
+    slo_tier: 2
+    event_driven: false
+    immutability_class: "mutable"
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # Federal Court (Immutable, Weekly Polling)
+  # ---------------------------------------------------------------------------
+  - scope_id: "FC-EN-2020-2025"
+    description: "Federal Court, English, 2020-2025 fixed range"
+    tribunal_id: "FC"
+    language: "EN"
+    time_window:
+      type: "fixed"
+      start_date: "2020-01-01"
+      end_date: "2025-12-31"
+      description: "Fixed 5-year range for immutable court decisions"
+    polling_cadence: "weekly"
+    slo_tier: 3
+    event_driven: false
+    immutability_class: "immutable"
+    enabled: true
+    notes:
+      - "Court decisions are stable after publication"
+      - "Weekly polling sufficient (low change frequency)"
+      - "Fixed time window (historical archive)"
+
+  - scope_id: "FC-FR-2020-2025"
+    description: "Cour fédérale, French, 2020-2025"
+    tribunal_id: "FC"
+    language: "FR"
+    time_window:
+      type: "fixed"
+      start_date: "2020-01-01"
+      end_date: "2025-12-31"
+    polling_cadence: "weekly"
+    slo_tier: 3
+    event_driven: false
+    immutability_class: "immutable"
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # Federal Court of Appeal (Immutable, Weekly Polling)
+  # ---------------------------------------------------------------------------
+  - scope_id: "FCA-BI-2015-2025"
+    description: "Federal Court of Appeal, Bilingual, 2015-2025"
+    tribunal_id: "FCA"
+    language: "BI"
+    time_window:
+      type: "fixed"
+      start_date: "2015-01-01"
+      end_date: "2025-12-31"
+    polling_cadence: "weekly"
+    slo_tier: 3
+    event_driven: false
+    immutability_class: "immutable"
+    bilingual_handling: "split"
+    enabled: true
+    notes:
+      - "Bilingual corpus: both EN and FR versions indexed"
+      - "Split strategy: create separate EN/FR chunks with linking metadata"
+      - "High precedential value (appeal court)"
+
+  # ---------------------------------------------------------------------------
+  # Supreme Court of Canada (Immutable, Monthly Polling)
+  # ---------------------------------------------------------------------------
+  - scope_id: "SCC-BI-2010-2025"
+    description: "Supreme Court of Canada, Bilingual, 2010-2025"
+    tribunal_id: "SCC"
+    language: "BI"
+    time_window:
+      type: "fixed"
+      start_date: "2010-01-01"
+      end_date: "2025-12-31"
+    polling_cadence: "monthly"
+    slo_tier: 3
+    event_driven: false
+    immutability_class: "immutable"
+    bilingual_handling: "split"
+    enabled: true
+    notes:
+      - "Highest precedential authority in Canada"
+      - "Very stable corpus (decisions never amended)"
+      - "Monthly polling sufficient (low volume, infrequent changes)"
+
+  # ---------------------------------------------------------------------------
+  # Example: Disabled Scope (for testing/development)
+  # ---------------------------------------------------------------------------
+  - scope_id: "SST-GD-EN-2018-2020-TEST"
+    description: "TEST SCOPE: SST-GD English 2018-2020 (disabled for production)"
+    tribunal_id: "SST-GD"
+    language: "EN"
+    time_window:
+      type: "fixed"
+      start_date: "2018-01-01"
+      end_date: "2020-12-31"
+    polling_cadence: "daily"
+    slo_tier: 2
+    event_driven: false
+    immutability_class: "mutable"
+    enabled: false
+    notes:
+      - "Used for A/B testing and policy validation"
+      - "Disabled in production to avoid duplicate processing"
+
+# ==============================================================================
+# VALIDATION RULES
+# ==============================================================================
+# Enforce schema and business rules for scope definitions
+
+validation_rules:
+  scope_id_format:
+    pattern: "^[A-Z]+-[A-Z]+-[A-Z]{2,3}-[a-z0-9-]+$"
+    description: "Format: TRIBUNAL-DIVISION-LANGUAGE-TIMEWINDOW"
+    examples:
+      - "SST-GD-EN-rolling-24mo"
+      - "FCA-BI-2015-2025"
+      - "SCC-EN-2010-2025-test"
+
+  tribunal_id_must_exist:
+    rule: "tribunal_id must exist in tribunal reference table"
+    allowed_values: ["SST-GD", "SST-AD", "FC", "FCA", "SCC"]
+    error_message: "Invalid tribunal_id. Must be one of: SST-GD, SST-AD, FC, FCA, SCC"
+
+  language_must_be_valid:
+    allowed_values: ["EN", "FR", "BI"]
+    error_message: "Language must be EN (English), FR (French), or BI (Bilingual)"
+    note: "BI requires bilingual_handling strategy (split or merge)"
+
+  time_window_required:
+    rule: "time_window must specify type (rolling or fixed)"
+    allowed_types: ["rolling", "fixed"]
+    rolling_requires: ["months"]
+    fixed_requires: ["start_date", "end_date"]
+
+  polling_cadence_allowed:
+    allowed_values: ["hourly", "daily", "weekly", "monthly"]
+    recommendations:
+      - cadence: "hourly"
+        use_case: "Critical policy documents (SLO tier 1)"
+      - cadence: "daily"
+        use_case: "Mutable tribunals (SST, SLO tier 2)"
+      - cadence: "weekly"
+        use_case: "Immutable courts (FC, FCA, SLO tier 3)"
+      - cadence: "monthly"
+        use_case: "Historical archives (SCC, SLO tier 3)"
+
+  slo_tier_allowed:
+    allowed_values: [1, 2, 3]
+    error_message: "SLO tier must be 1 (<1hr), 2 (<24hr), or 3 (weekly)"
+
+  bilingual_handling_required:
+    rule: "If language=BI, bilingual_handling must be specified"
+    allowed_values: ["split", "merge"]
+    description: "split = separate EN/FR chunks; merge = multilingual chunks"
+
+  enabled_must_be_boolean:
+    rule: "enabled field must be true or false"
+    default: true
+
+# ==============================================================================
+# SLO TIER DEFINITIONS
+# ==============================================================================
+# Service Level Objectives for corpus freshness
+
+slo_tiers:
+  1:
+    name: "Critical Policy"
+    max_staleness_hours: 1
+    max_staleness_description: "Index must be <1 hour old"
+    priority: "high"
+    event_driven_enabled: true
+    polling_cadence_recommendation: "hourly"
+    use_cases:
+      - "Active policy documents requiring immediate reflection"
+      - "Critical operational guidance"
+    cost_implications: "High API call frequency, ~$50-100/mo per corpus"
+
+  2:
+    name: "Operations Guidance"
+    max_staleness_hours: 24
+    max_staleness_description: "Index must be <24 hours old"
+    priority: "medium"
+    event_driven_enabled: false
+    polling_cadence_recommendation: "daily"
+    use_cases:
+      - "Recent tribunal decisions (SST rolling windows)"
+      - "Operational legal guidance for case workers"
+    cost_implications: "Moderate API calls, ~$10-20/mo per corpus"
+
+  3:
+    name: "Archives"
+    max_staleness_days: 7
+    max_staleness_description: "Index can be up to 7 days old"
+    priority: "low"
+    event_driven_enabled: false
+    polling_cadence_recommendation: "weekly"
+    use_cases:
+      - "Immutable court decisions (FC, FCA, SCC fixed ranges)"
+      - "Historical precedents (low change frequency)"
+    cost_implications: "Low API calls, ~$2-5/mo per corpus"
+
+# ==============================================================================
+# SCOPE LIFECYCLE MANAGEMENT
+# ==============================================================================
+
+lifecycle_policies:
+  rolling_window_behavior:
+    description: "Rolling windows slide daily at midnight UTC"
+    example: "SST-GD-EN-rolling-24mo on 2026-01-28 covers 2024-01-28 to 2026-01-28"
+    implementation: "CDC calculates date range dynamically at poll time"
+    pruning: "Cases falling outside window are marked for tombstone"
+
+  fixed_window_behavior:
+    description: "Fixed windows never change boundaries"
+    example: "FC-EN-2020-2025 always covers exactly 2020-01-01 to 2025-12-31"
+    implementation: "CDC filters CanLII results by decision_date"
+    closure: "After end_date passes, polling can be reduced to monthly (sanity check only)"
+
+  scope_retirement:
+    rule: "Set enabled=false to stop polling without deleting historical data"
+    data_retention: "poll_run and change_event records preserved for audit"
+    index_behavior: "Chunks remain in search index unless explicitly pruned"
+
+# ==============================================================================
+# CORPUS REGISTRY INTEGRATION
+# ==============================================================================
+# How scopes map to corpus_registry table (from preventing-stale-data.md)
+
+corpus_registry_mapping:
+  note: "Each scope_id should have corresponding corpus_registry entry"
+  fields_mapped:
+    - source: "scope_id"
+      target: "corpus_registry.corpus_id"
+    - source: "slo_tier"
+      target: "corpus_registry.slo_tier"
+    - source: "polling_cadence"
+      target: "corpus_registry.polling_cadence"
+    - source: "time_window"
+      target: "corpus_registry.scope_definition.time_window"
+    - source: "enabled"
+      target: "corpus_registry.enabled"
+
+# ==============================================================================
+# EXAMPLES & TEST CASES
+# ==============================================================================
+
+examples:
+  valid_scope_ids:
+    - "SST-GD-EN-rolling-24mo"
+    - "SST-AD-FR-rolling-36mo"
+    - "FCA-BI-2015-2025"
+    - "SCC-EN-2010-2025"
+    - "FC-FR-2020-2025-test"
+
+  invalid_scope_ids:
+    - "sst-gd-en-rolling-24mo"  # lowercase not allowed
+    - "SST-GD-EN"               # missing time window
+    - "SST_GD_EN_rolling_24mo"  # underscores not allowed
+    - "SST-GD-ES-rolling-24mo"  # ES (Spanish) not allowed
+
+  edge_cases:
+    - case: "Bilingual without bilingual_handling"
+      scope_id: "FCA-BI-2015-2025"
+      validation_error: "language=BI requires bilingual_handling field"
+    - case: "Rolling window with fixed dates"
+      error: "type=rolling cannot have start_date/end_date (use months instead)"
+    - case: "Fixed window without end_date"
+      error: "type=fixed requires both start_date and end_date"
+    - case: "SLO tier 1 with monthly polling"
+      warning: "SLO tier 1 (<1hr staleness) incompatible with monthly polling"
+
+# ==============================================================================
+# VERSION HISTORY
+# ==============================================================================
+
+version_history:
+  - version: "1.0.0"
+    date: "2026-01-28"
+    changes:
+      - "Initial scope definitions for SST-GD, SST-AD, FC, FCA, SCC"
+      - "SLO tier 1/2/3 definitions integrated"
+      - "Validation rules and examples added"
+      - "Corpus registry mapping documented"

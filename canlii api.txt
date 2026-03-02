@@ -1,0 +1,16 @@
+
+CanLII API Keys (REDACTED - Use Environment Variables)
+
+# Accenture Key
+# Set in environment: CANLII_API_KEY_ACCENTURE=<key_redacted>
+# Trust level: Secondary/backup
+
+# AICOE Key (PRIMARY - Use this for CDC system)
+# Set in environment: CANLII_API_KEY=<key_redacted>
+# Trust level: Primary source of truth
+# Configured in: app/backend/backend.env and functions/local.settings.json
+
+Usage:
+- Backend CDC modules: Read from CANLII_API_KEY environment variable
+- Tier1CDCPoller function: Read from CANLII_API_KEY environment variable
+- Never commit API keys to git - use .env files (gitignored)

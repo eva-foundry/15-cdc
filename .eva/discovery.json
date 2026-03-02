@@ -1,0 +1,261 @@
+{
+  "meta": {
+    "schema": "eva.discovery.v2",
+    "generated_at": "2026-02-25T06:37:09.481Z",
+    "repo": "C:\\AICOE\\eva-foundation\\15-cdc"
+  },
+  "project": null,
+  "planned": {
+    "epic": {
+      "title": "CDC (Change Data Capture) for MS-InfoJP Jurisprudence Corpus",
+      "source": "README.md"
+    },
+    "features": [
+      {
+        "id": "F15-01",
+        "title": "Purpose",
+        "source": "veritas-plan.json"
+      },
+      {
+        "id": "F15-02",
+        "title": "?? Prerequisites (Week 0 - MUST COMPLETE FIRST)",
+        "source": "veritas-plan.json"
+      },
+      {
+        "id": "F15-03",
+        "title": "Quick Start",
+        "source": "veritas-plan.json"
+      },
+      {
+        "id": "F15-04",
+        "title": "Architecture Overview",
+        "source": "veritas-plan.json"
+      },
+      {
+        "id": "F15-05",
+        "title": "Key Concepts",
+        "source": "veritas-plan.json"
+      },
+      {
+        "id": "F15-06",
+        "title": "Documentation Index",
+        "source": "veritas-plan.json"
+      },
+      {
+        "id": "F15-07",
+        "title": "Implementation Status",
+        "source": "veritas-plan.json"
+      },
+      {
+        "id": "F15-08",
+        "title": "Quick Reference",
+        "source": "veritas-plan.json"
+      },
+      {
+        "id": "F15-09",
+        "title": "Contributing",
+        "source": "veritas-plan.json"
+      },
+      {
+        "id": "F15-10",
+        "title": "References",
+        "source": "veritas-plan.json"
+      }
+    ],
+    "stories": [
+      {
+        "id": "F15-04-001",
+        "title": "Two-Plane Architecture",
+        "feature_id": "F15-04",
+        "source": "veritas-plan.json"
+      }
+    ],
+    "tasks": [],
+    "acceptance": [],
+    "declared_status": {}
+  },
+  "actual": {
+    "artifacts": [
+      {
+        "path": ".env.template",
+        "type": "other",
+        "story_tags": []
+      },
+      {
+        "path": ".gitignore",
+        "type": "other",
+        "story_tags": []
+      },
+      {
+        "path": "acceptance-tests.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "canlii api.txt",
+        "type": "other",
+        "story_tags": []
+      },
+      {
+        "path": "CDC-IMPLEMENTATION-START.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "CDC-INDEX.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "cdc-mvp-artifacts.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "cdc-mvp-design.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "change-policy.yaml",
+        "type": "config",
+        "story_tags": []
+      },
+      {
+        "path": "DEVBOX-DEPLOYMENT.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "downstream-invalidation-contract.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "immutability.yaml",
+        "type": "config",
+        "story_tags": []
+      },
+      {
+        "path": "IMPLEMENTATION-COMPLETE.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "IMPLEMENTATION-RISKS.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "language-policy.yaml",
+        "type": "config",
+        "story_tags": []
+      },
+      {
+        "path": "minimal-schema-ddl.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "operations-admin-control-plane.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "PLAN.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "preventing-stale-data.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "README.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "scope.yaml",
+        "type": "config",
+        "story_tags": []
+      },
+      {
+        "path": ".github/.project07-compliance-report.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": ".github/.project07-deployment-report.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": ".github/copilot-instructions.md",
+        "type": "doc",
+        "story_tags": []
+      },
+      {
+        "path": "tests/conftest.py",
+        "type": "test",
+        "story_tags": [],
+        "is_test": true
+      },
+      {
+        "path": "tests/pytest.ini",
+        "type": "test",
+        "story_tags": [],
+        "is_test": true
+      },
+      {
+        "path": "tests/requirements.txt",
+        "type": "test",
+        "story_tags": [],
+        "is_test": true
+      },
+      {
+        "path": "tests/test_cosmos_connectivity.py",
+        "type": "test",
+        "story_tags": [],
+        "is_test": true
+      },
+      {
+        "path": ".github/.project07-backups/copilot-instructions.md.backup_20260202_120844",
+        "type": "other",
+        "story_tags": []
+      },
+      {
+        "path": "scripts/deployment/create-storage-queues.ps1",
+        "type": "code",
+        "story_tags": []
+      },
+      {
+        "path": "scripts/deployment/deploy-cosmos-schema.py",
+        "type": "code",
+        "story_tags": []
+      },
+      {
+        "path": "scripts/dev/test-azure-connectivity.py",
+        "type": "code",
+        "story_tags": [
+          "F15-04-001"
+        ]
+      }
+    ],
+    "story_artifact_map": {
+      "F15-04-001": {
+        "artifacts": [
+          {
+            "path": "scripts/dev/test-azure-connectivity.py",
+            "type": "code",
+            "story_tags": [
+              "F15-04-001"
+            ]
+          }
+        ]
+      }
+    },
+    "commit_evidence_map": {}
+  }
+}

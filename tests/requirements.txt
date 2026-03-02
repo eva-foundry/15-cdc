@@ -1,0 +1,31 @@
+# CDC Testing Dependencies
+# Purpose: Python packages required for running CDC tests
+# Version: 1.0.0
+# Date: 2026-02-07
+# Installation: pip install -r requirements.txt
+
+# Testing framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.1
+pytest-timeout>=2.1.0
+
+# Azure SDK
+azure-cosmos>=4.5.0
+azure-storage-blob>=12.19.0
+azure-storage-queue>=12.8.0
+azure-search-documents>=11.4.0
+azure-identity>=1.14.0
+azure-keyvault-secrets>=4.7.0
+
+# HTTP requests
+requests>=2.31.0
+aiohttp>=3.9.0
+
+# Data handling
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
+
+# Professional Components
+# (These will be implemented in src/ directory)

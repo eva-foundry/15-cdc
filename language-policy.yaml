@@ -1,0 +1,582 @@
+# cdc/language-policy.yaml
+# Purpose:
+#   Define rules for handling English, French, and bilingual jurisprudence documents.
+#   Ensures proper chunking, embedding, and retrieval for Canada's official languages.
+#
+# Key Requirements:
+#   - Legal precedents must be searchable in both EN and FR
+#   - Embedding models perform best on monolingual text
+#   - Citations must preserve source language
+#   - Bilingual cases require special handling
+#
+# Version: 1.0.0
+# Last Updated: 2026-01-28
+# Owner: AICOE
+
+version: "1.0.0"
+owner: "AICOE"
+last_updated: "2026-01-28"
+
+# ==============================================================================
+# LANGUAGE SUPPORT
+# ==============================================================================
+
+supported_languages:
+  - language_code: "EN"
+    name: "English"
+    description: "English-language jurisprudence from Canadian tribunals and courts"
+    embedding_model: "text-embedding-3-small"
+    embedding_model_optimized: true
+    search_index_suffix: ""  # Uses main index
+    notes:
+      - "Primary language for Federal Court and SST-GD"
+      - "Most tribunal decisions published in EN first"
+
+  - language_code: "FR"
+    name: "French"
+    description: "French-language jurisprudence (Français)"
+    embedding_model: "text-embedding-3-small"
+    embedding_model_optimized: true
+    search_index_suffix: ""  # Uses main index with language filter
+    notes:
+      - "Official language, equal standing with English"
+      - "Some tribunals publish decisions in FR only"
+      - "text-embedding-3-small performs well on French"
+
+  - language_code: "BI"
+    name: "Bilingual"
+    description: "Cases published in both EN and FR (requires splitting)"
+    embedding_model: "N/A (split into EN and FR)"
+    search_index_suffix: "N/A"
+    notes:
+      - "Not a storage format - split into EN + FR during processing"
+      - "Common for SCC, FCA decisions"
+      - "Both versions linked via bilingual_pair_id"
+
+unsupported_languages:
+  - "ES (Spanish)"
+  - "DE (German)"
+  - "ZH (Chinese)"
+  note: "Canadian jurisprudence is published in EN/FR only per Official Languages Act"
+
+# ==============================================================================
+# BILINGUAL HANDLING STRATEGIES
+# ==============================================================================
+
+bilingual_handling:
+  # ---------------------------------------------------------------------------
+  # Strategy 1: SPLIT (Recommended for RAG quality)
+  # ---------------------------------------------------------------------------
+  split:
+    description: "Create separate EN and FR chunk streams, linked by bilingual_pair_id"
+    use_when:
+      - "Case published in both EN and FR (e.g., SCC, FCA)"
+      - "CanLII provides separate EN/FR URLs or language indicators"
+    implementation:
+      - "Detect language from artifact metadata or content"
+      - "Create 2 case_text records: one EN, one FR"
+      - "Generate separate chunks for each language"
+      - "Embed each language independently"
+      - "Tag chunks with language + bilingual_pair_id"
+    search_behavior:
+      - "User query in EN → search EN chunks (boost FR results if multilingual query detected)"
+      - "User query in FR → search FR chunks (boost EN results if multilingual query detected)"
+      - "Return citation links preserving source language"
+    advantages:
+      - "Best embedding quality (monolingual text)"
+      - "No cross-language semantic confusion"
+      - "Preserves legal precision (no translation ambiguity)"
+    disadvantages:
+      - "2x storage (EN + FR chunks)"
+      - "2x embedding API calls"
+    cost: "~$0.20 per bilingual case (10K tokens × 2 languages × $0.0001/1K)"
+
+  # ---------------------------------------------------------------------------
+  # Strategy 2: MERGE (Not Recommended for Legal Corpus)
+  # ---------------------------------------------------------------------------
+  merge:
+    description: "Create multilingual chunks with mixed EN/FR text"
+    use_when:
+      - "NOT RECOMMENDED for jurisprudence"
+      - "Only consider for informal operational documents"
+    implementation:
+      - "Concatenate EN and FR text in single case_text record"
+      - "Generate chunks containing both languages"
+      - "Embed mixed-language chunks"
+    search_behavior:
+      - "User query in any language searches all chunks"
+      - "Embedding model struggles with mixed-language semantics"
+    advantages:
+      - "1x storage (single chunk set)"
+      - "1x embedding API calls"
+    disadvantages:
+      - "Poor embedding quality (multilingual confusion)"
+      - "Semantic search degraded"
+      - "Legal precision compromised"
+    status: "Not implemented in Phase 1"
+
+  # ---------------------------------------------------------------------------
+  # Strategy 3: TRANSLATE (Phase 2 Enhancement)
+  # ---------------------------------------------------------------------------
+  translate:
+    description: "Machine-translate FR → EN (or vice versa) for monolingual corpus"
+    use_when:
+      - "Only one language version available but need both language searches"
+      - "Phase 2 feature (requires Azure Translator Service)"
+    implementation:
+      - "Detect source language (EN or FR)"
+      - "Translate to target language via Azure Translator"
+      - "Create case_text records for both original + translated"
+      - "Tag translated chunks with translation_source=azure_translator"
+    search_behavior:
+      - "User query in either language finds results"
+      - "Prefer original language chunks (boost=1.5x)"
+      - "Display translated chunks with disclaimer"
+    cost: "~$0.15 per case (5K tokens × $30/1M chars)"
+    status: "Phase 2 (not MVP)"
+
+# ==============================================================================
+# LANGUAGE DETECTION
+# ==============================================================================
+
+language_detection:
+  methods:
+    # -------------------------------------------------------------------------
+    # Method 1: Metadata-Based (Primary)
+    # -------------------------------------------------------------------------
+    - method: "metadata_based"
+      priority: 1
+      description: "Use CanLII metadata language indicators"
+      implementation:
+        - "Check artifact.metadata_json['language'] field"
+        - "Parse CanLII URL language suffix (/en/ or /fr/)"
+        - "Read case_source_key.external_key_metadata"
+      reliability: "High (90%+ accuracy for CanLII)"
+      fallback: "If metadata missing or ambiguous, use method 2"
+
+    # -------------------------------------------------------------------------
+    # Method 2: Content-Based Heuristics (Fallback)
+    # -------------------------------------------------------------------------
+    - method: "content_heuristics"
+      priority: 2
+      description: "Analyze first 1000 characters for language patterns"
+      implementation:
+        - "Count French-specific words: le, la, les, du, de, à, dans, pour, est, sont"
+        - "Count English-specific words: the, of, to, and, a, in, for, is, are"
+        - "Calculate language_score = (FR_words - EN_words) / total_words"
+        - "Threshold: >0.3 → FR, <-0.3 → EN, else UNKNOWN"
+      reliability: "Medium (70-80% accuracy)"
+      fallback: "If UNKNOWN, use method 3"
+
+    # -------------------------------------------------------------------------
+    # Method 3: Azure AI Language Detection (Expensive)
+    # -------------------------------------------------------------------------
+    - method: "azure_ai_language_detection"
+      priority: 3
+      description: "Call Azure Cognitive Services Language Detection API"
+      implementation:
+        - "Send first 5000 characters to API"
+        - "Parse confidence score (require >0.8 for acceptance)"
+      reliability: "Very High (95%+ accuracy)"
+      cost: "$1 per 1000 API calls (use sparingly)"
+      use_when: "Metadata missing AND heuristics inconclusive"
+
+  validation:
+    rule: "Language detection must occur during extract_text action"
+    output: "case_text.language field (EN or FR)"
+    error_handling:
+      - "If language cannot be determined: set language=UNKNOWN, quarantine for manual review"
+      - "Do NOT proceed to chunking/embedding with UNKNOWN language"
+
+# ==============================================================================
+# CHUNKING RULES BY LANGUAGE
+# ==============================================================================
+
+chunking_rules:
+  # ---------------------------------------------------------------------------
+  # English Chunking
+  # ---------------------------------------------------------------------------
+  english:
+    chunk_size_tokens: 800
+    chunk_overlap_tokens: 200
+    sentence_boundary_detection: true
+    paragraph_preservation: true
+    legal_section_awareness: true
+    notes:
+      - "800 tokens ≈ 600 words ≈ 2-3 paragraphs"
+      - "Overlap ensures context continuity across chunks"
+      - "Prefer breaking at paragraph boundaries"
+      - "Keep legal sections intact (e.g., 'Analysis', 'Conclusion')"
+
+  # ---------------------------------------------------------------------------
+  # French Chunking
+  # ---------------------------------------------------------------------------
+  french:
+    chunk_size_tokens: 800
+    chunk_overlap_tokens: 200
+    sentence_boundary_detection: true
+    paragraph_preservation: true
+    legal_section_awareness: true
+    notes:
+      - "Same parameters as English for consistency"
+      - "French text typically ~10% longer than English (adjust if needed)"
+      - "Sentence detection uses French punctuation rules (guillemets, etc.)"
+
+  # ---------------------------------------------------------------------------
+  # Bilingual Chunking (Split Strategy)
+  # ---------------------------------------------------------------------------
+  bilingual_split:
+    strategy: "Chunk EN and FR independently, then link"
+    implementation:
+      - "Apply english chunking rules to EN text"
+      - "Apply french chunking rules to FR text"
+      - "Assign bilingual_pair_id to all chunks from same case_version_id"
+      - "Store language in chunk metadata"
+    chunk_id_format: "hash(case_version_id + language + chunk_offset + chunk_text[:100])"
+    result: "2× chunks (EN set + FR set), each searchable independently"
+
+# ==============================================================================
+# EMBEDDING RULES BY LANGUAGE
+# ==============================================================================
+
+embedding_rules:
+  model:
+    name: "text-embedding-3-small"
+    dimensions: 1536
+    max_input_tokens: 8191
+    cost_per_1k_tokens: "$0.00002"
+    notes:
+      - "Supports both EN and FR well (multilingual training)"
+      - "No separate models needed for EN vs FR"
+
+  embedding_generation:
+    english:
+      - "Embed each EN chunk independently"
+      - "No preprocessing required (model handles EN)"
+      - "Store embedding vector in Azure AI Search"
+    
+    french:
+      - "Embed each FR chunk independently"
+      - "No translation required (model supports FR directly)"
+      - "Store embedding vector in Azure AI Search"
+    
+    bilingual_split:
+      - "Embed EN chunks → EN embeddings"
+      - "Embed FR chunks → FR embeddings"
+      - "Total embeddings = EN_chunk_count + FR_chunk_count"
+
+  batch_processing:
+    max_batch_size: 16
+    recommendation: "Batch chunks by language for efficiency"
+    example:
+      - "Batch 1: 16 EN chunks → 1 API call"
+      - "Batch 2: 12 FR chunks → 1 API call"
+
+# ==============================================================================
+# SEARCH INDEX SCHEMA (Language Fields)
+# ==============================================================================
+
+search_index_schema:
+  required_fields:
+    - field_name: "chunk_id"
+      type: "Edm.String"
+      key: true
+      searchable: false
+    
+    - field_name: "content"
+      type: "Edm.String"
+      searchable: true
+      analyzer: "language_specific"
+    
+    - field_name: "embedding"
+      type: "Collection(Edm.Single)"
+      dimensions: 1536
+      searchable: true
+      vector_search_configuration: "default"
+    
+    - field_name: "language"
+      type: "Edm.String"
+      filterable: true
+      facetable: true
+      values: ["EN", "FR"]
+    
+    - field_name: "bilingual_pair_id"
+      type: "Edm.String"
+      filterable: true
+      notes: "Links EN and FR versions of same case (NULL if monolingual)"
+    
+    - field_name: "case_id"
+      type: "Edm.String"
+      filterable: true
+    
+    - field_name: "tribunal_id"
+      type: "Edm.String"
+      filterable: true
+      facetable: true
+    
+    - field_name: "decision_date"
+      type: "Edm.DateTimeOffset"
+      filterable: true
+      sortable: true
+    
+    - field_name: "source_last_modified"
+      type: "Edm.DateTimeOffset"
+      sortable: true
+      notes: "For freshness scoring profile"
+
+  analyzers:
+    - analyzer_name: "en.microsoft"
+      language: "EN"
+      applies_to: "content field when language=EN"
+      features:
+        - "English stemming (run → running → ran)"
+        - "Stop word removal (the, a, an)"
+        - "Case-insensitive"
+    
+    - analyzer_name: "fr.microsoft"
+      language: "FR"
+      applies_to: "content field when language=FR"
+      features:
+        - "French stemming (marcher → marche → marché)"
+        - "Stop word removal (le, la, les)"
+        - "Accent normalization (é → e)"
+
+# ==============================================================================
+# RETRIEVAL RULES BY LANGUAGE
+# ==============================================================================
+
+retrieval_rules:
+  # ---------------------------------------------------------------------------
+  # Monolingual Query (User speaks one language)
+  # ---------------------------------------------------------------------------
+  monolingual_query:
+    english_query:
+      - "Detect query language: EN"
+      - "Apply filter: language eq 'EN'"
+      - "Execute hybrid search (vector + keyword with en.microsoft analyzer)"
+      - "Return EN chunks only"
+      - "Optional: Include FR results with lower boost (0.5x) if explicitly requested"
+    
+    french_query:
+      - "Detect query language: FR"
+      - "Apply filter: language eq 'FR'"
+      - "Execute hybrid search (vector + keyword with fr.microsoft analyzer)"
+      - "Return FR chunks only"
+      - "Optional: Include EN results with lower boost (0.5x) if explicitly requested"
+
+  # ---------------------------------------------------------------------------
+  # Bilingual Query (User query contains both EN and FR)
+  # ---------------------------------------------------------------------------
+  bilingual_query:
+    detection: "Query contains both EN and FR keywords"
+    strategy: "Search both languages without filter, apply recency boost"
+    implementation:
+      - "No language filter applied"
+      - "Hybrid search across all chunks"
+      - "Scoring profile boosts source_last_modified"
+      - "Group results by bilingual_pair_id (show EN and FR versions together)"
+    example_query: "EI appeals / appels AE"
+
+  # ---------------------------------------------------------------------------
+  # Cross-Language Fallback (Phase 2)
+  # ---------------------------------------------------------------------------
+  cross_language_fallback:
+    description: "If EN query finds <3 results, try FR corpus (and vice versa)"
+    implementation:
+      - "Primary search: language=EN filter"
+      - "If result_count < 3: secondary search with language=FR filter"
+      - "Display FR results with translation notice"
+    status: "Phase 2 enhancement"
+
+# ==============================================================================
+# CITATION DISPLAY RULES
+# ==============================================================================
+
+citation_display:
+  rules:
+    - rule: "Always preserve source language in citation"
+      example_EN: "See 2020 SST 123 at para 45"
+      example_FR: "Voir 2020 TSS 123 au para 45"
+    
+    - rule: "If bilingual case, offer both language links"
+      display: "[EN version] | [FR version]"
+    
+    - rule: "Indicate language with flag or label"
+      EN_indicator: "🇬🇧 English"
+      FR_indicator: "🇫🇷 Français"
+    
+    - rule: "Do NOT machine-translate citations"
+      rationale: "Legal precision requires original language"
+
+# ==============================================================================
+# METADATA LANGUAGE HANDLING
+# ==============================================================================
+
+metadata_language:
+  tribunal_names:
+    strategy: "Store both EN and FR names in tribunal reference table"
+    implementation:
+      - "tribunal.name_en: 'Social Security Tribunal'"
+      - "tribunal.name_fr: 'Tribunal de la sécurité sociale'"
+    display: "Show name in user's preferred language (or both)"
+
+  decision_metadata:
+    case_name:
+      - "Store as-published (may be EN, FR, or bilingual)"
+      - "Example EN: 'Smith v. Minister of Employment and Social Development'"
+      - "Example FR: 'Tremblay c. Ministre de l'Emploi et du Développement social'"
+    
+    docket_number:
+      - "Language-agnostic (e.g., 'GE-18-1234')"
+    
+    decision_date:
+      - "ISO 8601 format (language-agnostic): 2020-06-15"
+    
+    keywords:
+      - "Store in both EN and FR if available"
+      - "Tag with language: keywords_en, keywords_fr"
+
+# ==============================================================================
+# VALIDATION & QUALITY CHECKS
+# ==============================================================================
+
+validation:
+  language_consistency:
+    - check: "case_text.language matches artifact.metadata_json['language']"
+      error: "Language mismatch between metadata and detected language"
+    
+    - check: "All chunks from same case_text have same language"
+      error: "Inconsistent language tags within case_version"
+    
+    - check: "Bilingual cases have equal chunk counts for EN and FR (±10%)"
+      warning: "Unbalanced EN/FR chunk distribution (possible extraction issue)"
+
+  embedding_quality:
+    - check: "All EN chunks have embeddings with non-zero vectors"
+    - check: "All FR chunks have embeddings with non-zero vectors"
+    - check: "No chunks with language=UNKNOWN indexed"
+
+  search_index_integrity:
+    - check: "language field present on all documents"
+    - check: "bilingual_pair_id present on documents with language=EN/FR from same case"
+    - check: "Analyzer configuration matches language field"
+
+# ==============================================================================
+# EXAMPLES & TEST CASES
+# ==============================================================================
+
+examples:
+  monolingual_english_case:
+    case_id: "2020-SST-123-EN"
+    source: "CanLII SST-GD decision published in English only"
+    artifacts:
+      - artifact_type: "pdf"
+        language: "EN"
+        url: "https://canlii.ca/en/ca/sst-gd/doc/2020/2020sst123"
+    processing:
+      - "Extract text → case_text (language=EN)"
+      - "Chunk text → 15 chunks (language=EN)"
+      - "Embed chunks → 15 embeddings"
+      - "Index chunks → language=EN filter"
+    search:
+      - "User query (EN): 'EI medical appeal' → Returns chunks from 2020-SST-123-EN"
+
+  monolingual_french_case:
+    case_id: "2021-TSS-456-FR"
+    source: "CanLII SST-GD decision published in French only"
+    artifacts:
+      - artifact_type: "pdf"
+        language: "FR"
+        url: "https://canlii.ca/fr/ca/tss-gd/doc/2021/2021tss456"
+    processing:
+      - "Extract text → case_text (language=FR)"
+      - "Chunk text → 12 chunks (language=FR)"
+      - "Embed chunks → 12 embeddings"
+      - "Index chunks → language=FR filter"
+    search:
+      - "User query (FR): 'appel médical AE' → Returns chunks from 2021-TSS-456-FR"
+
+  bilingual_scc_case:
+    case_id: "2019-SCC-45-BI"
+    source: "Supreme Court of Canada decision published in both EN and FR"
+    artifacts:
+      - artifact_type: "pdf"
+        language: "EN"
+        url: "https://canlii.ca/en/ca/scc/doc/2019/2019scc45"
+      - artifact_type: "pdf"
+        language: "FR"
+        url: "https://canlii.ca/fr/ca/csc/doc/2019/2019csc45"
+    processing:
+      - "Extract EN text → case_text (language=EN, case_version_id=X)"
+      - "Extract FR text → case_text (language=FR, case_version_id=X)"
+      - "Chunk EN → 20 chunks (language=EN, bilingual_pair_id=Y)"
+      - "Chunk FR → 22 chunks (language=FR, bilingual_pair_id=Y)"
+      - "Embed EN chunks → 20 embeddings"
+      - "Embed FR chunks → 22 embeddings"
+      - "Index all 42 chunks with bilingual_pair_id=Y"
+    search:
+      - "User query (EN): 'employment insurance' → Returns EN chunks (bilingual_pair_id=Y)"
+      - "User query (FR): 'assurance-emploi' → Returns FR chunks (bilingual_pair_id=Y)"
+      - "Citation display: Shows both [EN version] | [FR version] links"
+
+# ==============================================================================
+# COST ESTIMATION
+# ==============================================================================
+
+cost_estimation:
+  monolingual_case:
+    avg_tokens: 10000
+    chunks: 15
+    embeddings: 15
+    cost_per_case: "$0.0002 (embeddings only)"
+  
+  bilingual_case:
+    avg_tokens_EN: 10000
+    avg_tokens_FR: 11000  # French ~10% longer
+    chunks_EN: 15
+    chunks_FR: 17
+    embeddings: 32
+    cost_per_case: "$0.00044 (embeddings only)"
+  
+  monthly_estimate:
+    new_monolingual_cases: 60
+    new_bilingual_cases: 10
+    total_embedding_cost: "$0.0162"
+    note: "Embedding cost negligible compared to Azure infrastructure"
+
+# ==============================================================================
+# PHASE 2 ENHANCEMENTS
+# ==============================================================================
+
+phase2_enhancements:
+  - feature: "Machine Translation"
+    description: "Auto-translate FR → EN (or vice versa) for missing language versions"
+    cost: "~$0.15 per case (Azure Translator)"
+    priority: "Medium"
+  
+  - feature: "Cross-Language Semantic Search"
+    description: "EN query finds relevant FR results (and vice versa)"
+    implementation: "Multilingual embeddings or translation layer"
+    priority: "Low (nice-to-have)"
+  
+  - feature: "Language-Specific Scoring Profiles"
+    description: "Different freshness/relevance weights for EN vs FR corpus"
+    use_case: "If EN corpus updates daily but FR corpus updates weekly"
+    priority: "Low"
+
+# ==============================================================================
+# VERSION HISTORY
+# ==============================================================================
+
+version_history:
+  - version: "1.0.0"
+    date: "2026-01-28"
+    changes:
+      - "Initial language support definitions (EN/FR/BI)"
+      - "Bilingual handling strategies (split/merge/translate)"
+      - "Language detection methods (metadata/heuristics/AI)"
+      - "Chunking and embedding rules by language"
+      - "Search index schema with language fields"
+      - "Retrieval rules for mono/bilingual queries"
+      - "Citation display and metadata handling"
+      - "Examples and cost estimation"

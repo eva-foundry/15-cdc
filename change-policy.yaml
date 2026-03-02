@@ -1,0 +1,344 @@
+# cdc/change-policy.yaml
+# Purpose:
+#   Authoritative rules for classifying detected changes and deciding downstream actions.
+#   This file is referenced by poll_run records (policy_version + policy_hash).
+#
+# Key concepts:
+#   - "signal" = what CDC observes (registry diff, artifact hash drift, redirect, etc.)
+#   - "change_class" = how meaningful the change is (structural / metadata / content / cosmetic / availability)
+#   - "actions" = downstream work allowed to run (extract/chunk/embed/index) with minimal recompute
+#
+# Constraint reminder:
+#   CanLII API is metadata-only. Do not assume doc download or text search from CanLII.
+#
+policy:
+  policy_id: "jp-cdc-change-policy"
+  policy_version: "0.1.0"
+  last_updated_utc: "2026-01-25"
+  owner: "AICOE"
+  notes:
+    - "Classify change based on normalized signals; raw HTML diffs are not authoritative."
+    - "Every downstream action must be traceable to a change_event."
+    - "Cosmetic HTML noise must not trigger ingestion."
+
+# -------------------------------------------------------------------
+# Global rules (apply to every scope_id)
+# -------------------------------------------------------------------
+global_rules:
+  evidence_required:
+    - "poll_run must exist for every execution."
+    - "change_event must exist for every non-noop action."
+    - "case_version must be created only for meaningful changes (see versioning_rules)."
+  prohibited_triggers:
+    - id: "no-raw-html-hash"
+      description: "Raw HTML hashing is prohibited for change detection due to noise."
+    - id: "no-full-rebuild"
+      description: "Full re-embed or full re-index of the entire corpus is prohibited."
+  preferred_signals_order:
+    # When multiple signals conflict, prefer the strongest (most reliable) first.
+    - "artifact_pdf_hash"
+    - "artifact_text_hash"
+    - "artifact_html_normalized_hash"
+    - "registry_structural_diff"
+    - "registry_metadata_hash"
+    - "http_etag_last_modified"
+    - "http_content_length"
+  idempotency:
+    - "Same inputs + same policy => same classification + same actions."
+    - "Re-running a poll must not create duplicate artifacts, versions, or vectors."
+
+# -------------------------------------------------------------------
+# Change classes
+# -------------------------------------------------------------------
+change_classes:
+  structural:
+    meaning: "New/removed identifiers or key mappings changed (case identity, URLs)."
+    requires_case_version: true
+    default_actions: ["fetch_artifact", "extract_text", "generate_chunks", "embed_chunks", "update_index"]
+
+  availability:
+    meaning: "Language availability changed (EN/FR added/removed) or artifact presence changed."
+    requires_case_version: true
+    default_actions: ["fetch_artifact", "extract_text", "generate_chunks", "embed_chunks", "update_index"]
+
+  metadata_meaningful:
+    meaning: "Metadata changed that affects retrieval, filtering, ranking, or citation display."
+    requires_case_version: true
+    default_actions: ["update_registry", "update_index_metadata_only"]
+
+  metadata_nonmeaningful:
+    meaning: "Metadata changed but does not affect retrieval or UI (housekeeping)."
+    requires_case_version: false
+    default_actions: ["update_registry"]
+
+  content:
+    meaning: "Content-bearing artifact changed (PDF bytes or extracted text drift)."
+    requires_case_version: true
+    default_actions: ["fetch_artifact", "extract_text", "generate_chunks", "embed_chunks", "update_index"]
+
+  cosmetic:
+    meaning: "Formatting, layout, or non-content HTML noise."
+    requires_case_version: false
+    default_actions: []
+
+  unreachable:
+    meaning: "Source temporarily unreachable (timeouts/429/503) with no evidence of deletion."
+    requires_case_version: false
+    default_actions: ["record_failure", "retry_with_backoff"]
+
+  deleted:
+    meaning: "Previously present case/artifact now definitively removed or permanently unavailable."
+    requires_case_version: true
+    default_actions: ["mark_withdrawn_or_deleted", "update_index_tombstone"]
+
+# -------------------------------------------------------------------
+# Immutability model (referenced by scope.yaml and tribunal/court taxonomy)
+# -------------------------------------------------------------------
+immutability:
+  classes:
+    immutable:
+      description: "Final decisions treated as stable after initial capture; re-check infrequently."
+      allowed_change_classes: ["structural", "availability", "content", "deleted", "unreachable", "metadata_meaningful"]
+      notes:
+        - "Metadata-only drift is rare but permitted (e.g., citation correction)."
+    mutable:
+      description: "Sources where metadata/headnotes/HTML can change; check more frequently."
+      allowed_change_classes: ["structural", "availability", "content", "deleted", "unreachable", "metadata_meaningful", "metadata_nonmeaningful", "cosmetic"]
+
+# -------------------------------------------------------------------
+# Signals CDC can observe (inputs to the classifier)
+# -------------------------------------------------------------------
+signals:
+  registry:
+    - id: "registry_new_case_id"
+      meaning: "Case ID appears in registry snapshot but not in prior snapshot."
+      strength: "high"
+    - id: "registry_missing_case_id"
+      meaning: "Case ID disappears from registry snapshot."
+      strength: "high"
+    - id: "registry_external_key_changed"
+      meaning: "External key mapping changed for an existing case_id."
+      strength: "high"
+    - id: "registry_language_set_changed"
+      meaning: "Registry indicates EN/FR availability changed."
+      strength: "high"
+    - id: "registry_metadata_hash_changed"
+      meaning: "Hash of meaningful metadata fields changed."
+      strength: "medium"
+
+  http_observation:
+    - id: "http_redirect"
+      meaning: "Canonical URL now redirects (301/302) to a new target."
+      strength: "medium"
+    - id: "http_etag_changed"
+      meaning: "ETag differs from last observation."
+      strength: "medium"
+    - id: "http_last_modified_changed"
+      meaning: "Last-Modified differs from last observation."
+      strength: "medium"
+    - id: "http_content_length_changed"
+      meaning: "Content length differs; weak alone."
+      strength: "low"
+
+  artifact:
+    - id: "artifact_pdf_hash_changed"
+      meaning: "Stored PDF bytes hash changed (or blob md5 changed)."
+      strength: "very_high"
+    - id: "artifact_text_hash_changed"
+      meaning: "Normalized extracted text hash changed."
+      strength: "very_high"
+    - id: "artifact_html_normalized_hash_changed"
+      meaning: "Normalized content-region HTML/text hash changed."
+      strength: "high"
+    - id: "artifact_missing"
+      meaning: "Expected artifact no longer present in mirror."
+      strength: "high"
+    - id: "artifact_new"
+      meaning: "New artifact appears in mirror for known case_id."
+      strength: "high"
+
+  ops:
+    - id: "source_unreachable"
+      meaning: "Timeout/429/503; transient failure signal."
+      strength: "low"
+    - id: "source_permanently_gone"
+      meaning: "410/404 repeatedly beyond threshold; treat as deleted."
+      strength: "high"
+
+# -------------------------------------------------------------------
+# Metadata fields: what is "meaningful" vs "non-meaningful"
+#   These lists define how registry_metadata_hash is computed.
+# -------------------------------------------------------------------
+metadata_fields:
+  meaningful:
+    - "tribunal_id"
+    - "court_level"
+    - "precedence_rank"
+    - "decision_date"
+    - "publication_date"
+    - "neutral_citation"
+    - "docket_number"
+    - "style_of_cause"
+    - "canonical_url"
+    - "language_set"
+    - "case_status"          # active/withdrawn/superseded/unknown
+  nonmeaningful:
+    - "source_notes"
+    - "crawl_notes"
+    - "ui_label_overrides"
+    - "minor_spelling_fix"
+    - "internal_tags_housekeeping"
+
+# -------------------------------------------------------------------
+# Classification rules (ordered, first-match wins)
+# -------------------------------------------------------------------
+classification_rules:
+  # --- Structural ---
+  - rule_id: "R1-new-case"
+    if_any_signals: ["registry_new_case_id"]
+    classify_as: "structural"
+    reason: "New case detected in registry."
+    actions_override: ["fetch_artifact", "extract_text", "generate_chunks", "embed_chunks", "update_index"]
+
+  - rule_id: "R2-missing-case"
+    if_any_signals: ["registry_missing_case_id", "source_permanently_gone"]
+    classify_as: "deleted"
+    reason: "Case removed or permanently unavailable."
+    actions_override: ["mark_withdrawn_or_deleted", "update_index_tombstone"]
+
+  - rule_id: "R3-external-key-changed"
+    if_any_signals: ["registry_external_key_changed", "http_redirect"]
+    classify_as: "structural"
+    reason: "Identity mapping or canonical URL changed."
+    actions_override: ["update_registry", "fetch_artifact"]
+
+  # --- Availability (language/artifact presence) ---
+  - rule_id: "R4-language-set-changed"
+    if_any_signals: ["registry_language_set_changed"]
+    classify_as: "availability"
+    reason: "Language availability changed (EN/FR)."
+    actions_override: ["update_registry", "fetch_artifact", "extract_text", "generate_chunks", "embed_chunks", "update_index"]
+
+  - rule_id: "R5-artifact-missing"
+    if_any_signals: ["artifact_missing"]
+    classify_as: "availability"
+    reason: "Expected mirrored artifact missing; treat as availability event."
+    actions_override: ["fetch_artifact"]
+
+  - rule_id: "R6-artifact-new"
+    if_any_signals: ["artifact_new"]
+    classify_as: "availability"
+    reason: "New mirrored artifact appeared for known case."
+    actions_override: ["extract_text", "generate_chunks", "embed_chunks", "update_index"]
+
+  # --- Content ---
+  - rule_id: "R7-pdf-bytes-changed"
+    if_any_signals: ["artifact_pdf_hash_changed"]
+    classify_as: "content"
+    reason: "PDF content drift detected."
+    actions_override: ["extract_text", "generate_chunks", "embed_chunks", "update_index"]
+
+  - rule_id: "R8-text-changed"
+    if_any_signals: ["artifact_text_hash_changed"]
+    classify_as: "content"
+    reason: "Extracted text drift detected."
+    actions_override: ["generate_chunks", "embed_chunks", "update_index"]
+
+  - rule_id: "R9-html-normalized-changed"
+    if_any_signals: ["artifact_html_normalized_hash_changed"]
+    classify_as: "content"
+    reason: "Normalized content-region drift detected."
+    actions_override: ["extract_text", "generate_chunks", "embed_chunks", "update_index"]
+
+  # --- Metadata ---
+  - rule_id: "R10-meaningful-metadata-drift"
+    if_any_signals: ["registry_metadata_hash_changed"]
+    additional_condition: "changed_fields_intersect(metadata_fields.meaningful)"
+    classify_as: "metadata_meaningful"
+    reason: "Meaningful metadata drift affects retrieval/citation."
+    actions_override: ["update_registry", "update_index_metadata_only"]
+
+  - rule_id: "R11-nonmeaningful-metadata-drift"
+    if_any_signals: ["registry_metadata_hash_changed"]
+    additional_condition: "changed_fields_subset(metadata_fields.nonmeaningful)"
+    classify_as: "metadata_nonmeaningful"
+    reason: "Non-meaningful metadata drift."
+    actions_override: ["update_registry"]
+
+  # --- Cosmetic / ignore ---
+  - rule_id: "R12-cosmetic-html-noise"
+    if_any_signals: ["http_etag_changed", "http_last_modified_changed", "http_content_length_changed"]
+    additional_condition: "no_normalized_content_change_detected"
+    classify_as: "cosmetic"
+    reason: "HTTP observation changed without normalized content drift."
+    actions_override: []
+
+  # --- Unreachable / transient ---
+  - rule_id: "R13-source-unreachable"
+    if_any_signals: ["source_unreachable"]
+    classify_as: "unreachable"
+    reason: "Transient source failure."
+    actions_override: ["record_failure", "retry_with_backoff"]
+
+  # --- Default ---
+  - rule_id: "R99-default-noop"
+    if_any_signals: []
+    classify_as: "cosmetic"
+    reason: "No meaningful change detected."
+    actions_override: []
+
+# -------------------------------------------------------------------
+# Downstream actions vocabulary (must be referenced in change_event.action_taken)
+# -------------------------------------------------------------------
+actions:
+  vocabulary:
+    - "update_registry"
+    - "fetch_artifact"
+    - "extract_text"
+    - "generate_chunks"
+    - "embed_chunks"
+    - "update_index"
+    - "update_index_metadata_only"
+    - "mark_withdrawn_or_deleted"
+    - "update_index_tombstone"
+    - "record_failure"
+    - "retry_with_backoff"
+  minimal_recompute_rules:
+    - "extract_text runs only for changed artifacts (or newly available language)."
+    - "generate_chunks runs only for changed texts."
+    - "embed_chunks runs only for changed chunks."
+    - "update_index applies only to affected vectors/documents."
+    - "No action may operate on 'entire corpus' scope unless explicitly authorized as a recovery event."
+
+# -------------------------------------------------------------------
+# Versioning rules (when to create case_version)
+# -------------------------------------------------------------------
+versioning_rules:
+  create_new_case_version_when_change_class_in:
+    - "structural"
+    - "availability"
+    - "metadata_meaningful"
+    - "content"
+    - "deleted"
+  do_not_create_case_version_when_change_class_in:
+    - "metadata_nonmeaningful"
+    - "cosmetic"
+    - "unreachable"
+  version_reason_map:
+    structural: "new_or_identity_change"
+    availability: "language_or_artifact_availability"
+    metadata_meaningful: "meaningful_metadata_change"
+    content: "content_change"
+    deleted: "deleted_or_withdrawn"
+
+# -------------------------------------------------------------------
+# Operational thresholds (tunable knobs; referenced by runbook)
+# -------------------------------------------------------------------
+thresholds:
+  permanently_gone_after_n_consecutive_observations: 3
+  unreachable_quarantine_after_n_failures: 5
+  hash_collision_policy: "treat_as_change_and_escalate"
+  retry:
+    max_attempts: 3
+    backoff_strategy: "exponential_with_jitter"
+    honor_retry_after_header: true

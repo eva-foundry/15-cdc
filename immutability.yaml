@@ -1,0 +1,407 @@
+# cdc/immutability.yaml
+# Purpose:
+#   Define immutability classes for jurisprudence sources and polling frequency rules.
+#   Determines how often CDC should check each source type for changes.
+#
+# Key Principle:
+#   Court decisions are stable after publication (immutable) → check infrequently
+#   Tribunal decisions may be amended (mutable) → check frequently
+#
+# Version: 1.0.0
+# Last Updated: 2026-01-28
+# Owner: AICOE
+
+version: "1.0.0"
+owner: "AICOE"
+last_updated: "2026-01-28"
+
+# ==============================================================================
+# IMMUTABILITY CLASSES
+# ==============================================================================
+
+immutability:
+  classes:
+    # -------------------------------------------------------------------------
+    # IMMUTABLE: Final decisions treated as stable after initial capture
+    # -------------------------------------------------------------------------
+    immutable:
+      description: "Final court decisions that do not change after publication"
+      characteristics:
+        - "Published by superior courts (FC, FCA, SCC)"
+        - "No amendments or corrections after initial publication"
+        - "Content-bearing artifacts (PDFs) remain byte-stable"
+        - "Metadata may have minor housekeeping updates (non-meaningful)"
+      polling_strategy:
+        initial_capture: "Once at publication"
+        ongoing_verification: "Weekly or monthly sanity checks"
+        change_expectation: "<0.1% per year (mostly cosmetic HTML changes)"
+      cost_optimization:
+        - "After initial capture, reduce polling to weekly/monthly"
+        - "Focus downstream processing on new cases only"
+        - "Skip embedding regeneration unless content hash changes"
+      examples:
+        - tribunal_id: "FC"
+          name: "Federal Court"
+          rationale: "Trial court decisions are final and published once"
+        - tribunal_id: "FCA"
+          name: "Federal Court of Appeal"
+          rationale: "Appeal court decisions are authoritative and stable"
+        - tribunal_id: "SCC"
+          name: "Supreme Court of Canada"
+          rationale: "Highest court, decisions never amended"
+
+    # -------------------------------------------------------------------------
+    # MUTABLE: Decisions that may be amended within weeks/months of publication
+    # -------------------------------------------------------------------------
+    mutable:
+      description: "Tribunal decisions that may be corrected or amended post-publication"
+      characteristics:
+        - "Published by administrative tribunals (SST, CITT, etc.)"
+        - "May have typo corrections, clarifications, or redactions"
+        - "PDF may be re-issued with updated version"
+        - "Metadata updates more frequent (dates, docket numbers)"
+      polling_strategy:
+        initial_capture: "Immediate upon detection"
+        ongoing_verification: "Daily for rolling windows"
+        change_expectation: "~2-5% per month (content + metadata)"
+      cost_implications:
+        - "Higher API call frequency (daily polling)"
+        - "More change_events and downstream processing"
+        - "Acceptable cost for user-facing operational guidance"
+      examples:
+        - tribunal_id: "SST-GD"
+          name: "Social Security Tribunal - General Division"
+          rationale: "Decisions may be corrected within weeks"
+          typical_changes:
+            - "Typographical corrections"
+            - "Redaction of personal information"
+            - "Administrative metadata updates"
+        - tribunal_id: "SST-AD"
+          name: "Social Security Tribunal - Appeal Division"
+          rationale: "Appeal decisions may clarify reasoning post-publication"
+          typical_changes:
+            - "Clarifications to reasoning"
+            - "Correction of cited cases"
+
+    # -------------------------------------------------------------------------
+    # QUASI-IMMUTABLE: Rare changes after initial publication
+    # -------------------------------------------------------------------------
+    quasi_immutable:
+      description: "Sources with very low change rate after stabilization period"
+      characteristics:
+        - "Initial 30-day window: may see corrections (poll daily)"
+        - "After 30 days: treat as immutable (poll weekly/monthly)"
+      polling_strategy:
+        initial_capture: "Immediate"
+        first_30_days: "Daily polling"
+        after_30_days: "Weekly polling"
+        after_1_year: "Monthly sanity check"
+      use_cases:
+        - "CITT (Canadian International Trade Tribunal) decisions"
+        - "CIRB (Canada Industrial Relations Board) decisions"
+      examples:
+        - tribunal_id: "CITT"
+          name: "Canadian International Trade Tribunal"
+          rationale: "Technical decisions stabilize quickly after publication"
+
+# ==============================================================================
+# POLLING FREQUENCY RULES
+# ==============================================================================
+
+polling_frequency:
+  rules:
+    # -------------------------------------------------------------------------
+    # Rule 1: Tribunal Type Determines Base Frequency
+    # -------------------------------------------------------------------------
+    - rule_id: "PF-R1"
+      name: "Tribunal Type Base Frequency"
+      logic:
+        - condition: "tribunal.court_level == 'tribunal'"
+          immutability_class: "mutable"
+          base_frequency: "daily"
+        - condition: "tribunal.court_level == 'trial'"
+          immutability_class: "immutable"
+          base_frequency: "weekly"
+        - condition: "tribunal.court_level == 'appeal'"
+          immutability_class: "immutable"
+          base_frequency: "weekly"
+        - condition: "tribunal.court_level == 'supreme'"
+          immutability_class: "immutable"
+          base_frequency: "monthly"
+
+    # -------------------------------------------------------------------------
+    # Rule 2: Time Window Type Adjusts Frequency
+    # -------------------------------------------------------------------------
+    - rule_id: "PF-R2"
+      name: "Time Window Adjustment"
+      logic:
+        - condition: "time_window.type == 'rolling'"
+          adjustment: "No change (active window requires consistent polling)"
+        - condition: "time_window.type == 'fixed' AND current_date > end_date"
+          adjustment: "Reduce by 1 tier (e.g., daily → weekly, weekly → monthly)"
+          rationale: "Historical window closed, only sanity checks needed"
+
+    # -------------------------------------------------------------------------
+    # Rule 3: SLO Tier Can Override Base Frequency
+    # -------------------------------------------------------------------------
+    - rule_id: "PF-R3"
+      name: "SLO Tier Override"
+      logic:
+        - condition: "slo_tier == 1"
+          override_frequency: "hourly"
+          rationale: "Critical policy documents require immediate reflection"
+        - condition: "slo_tier == 2"
+          override_frequency: "daily"
+          rationale: "Operational guidance requires daily updates"
+        - condition: "slo_tier == 3"
+          override_frequency: "Use base frequency from Rule 1"
+          rationale: "Archives follow immutability-based frequency"
+
+    # -------------------------------------------------------------------------
+    # Rule 4: Change Detection History Adjusts Frequency
+    # -------------------------------------------------------------------------
+    - rule_id: "PF-R4"
+      name: "Adaptive Frequency Based on History"
+      logic:
+        - condition: "No meaningful changes in last 90 days"
+          adjustment: "Reduce frequency by 1 tier"
+          example: "daily → weekly"
+        - condition: "Consistent changes detected (>5% per month)"
+          adjustment: "Maintain or increase frequency"
+        - condition: "Only cosmetic changes in last 180 days"
+          adjustment: "Reduce to monthly sanity check"
+
+# ==============================================================================
+# POLLING SCHEDULES (Concrete Examples)
+# ==============================================================================
+
+polling_schedules:
+  # ---------------------------------------------------------------------------
+  # Daily Polling (Mutable Tribunals)
+  # ---------------------------------------------------------------------------
+  daily:
+    schedule: "Every day at 02:00 UTC"
+    rationale: "Off-peak hours, after CanLII nightly updates"
+    applies_to:
+      - "SST-GD-* (all languages, rolling windows)"
+      - "SST-AD-* (all languages, rolling windows)"
+      - "Any scope with slo_tier=2 and immutability_class=mutable"
+    expected_api_calls: "~30-35 calls/month per scope"
+    cost_per_scope: "CanLII API free; Azure costs ~$5-10/mo (Cosmos + Search)"
+
+  # ---------------------------------------------------------------------------
+  # Weekly Polling (Immutable Courts)
+  # ---------------------------------------------------------------------------
+  weekly:
+    schedule: "Every Sunday at 03:00 UTC"
+    rationale: "Weekly sanity check for immutable sources"
+    applies_to:
+      - "FC-* (Federal Court, fixed windows)"
+      - "FCA-* (Federal Court of Appeal, fixed windows)"
+      - "Any scope with immutability_class=immutable and slo_tier=3"
+    expected_api_calls: "~4-5 calls/month per scope"
+    cost_per_scope: "CanLII API free; Azure costs ~$1-2/mo"
+
+  # ---------------------------------------------------------------------------
+  # Monthly Polling (Historical Archives)
+  # ---------------------------------------------------------------------------
+  monthly:
+    schedule: "First day of month at 04:00 UTC"
+    rationale: "Sanity check only for closed historical windows"
+    applies_to:
+      - "SCC-* (Supreme Court of Canada)"
+      - "Fixed windows where current_date > end_date + 1 year"
+    expected_api_calls: "~1 call/month per scope"
+    cost_per_scope: "Minimal (~$0.50/mo)"
+
+  # ---------------------------------------------------------------------------
+  # Hourly Polling (Critical Policy - Phase 2)
+  # ---------------------------------------------------------------------------
+  hourly:
+    schedule: "Every hour at :15 past the hour"
+    rationale: "Critical policy documents requiring near-real-time updates"
+    applies_to:
+      - "Any scope with slo_tier=1"
+      - "Not used in Phase 1 MVP"
+    expected_api_calls: "~730 calls/month per scope"
+    cost_per_scope: "High (~$50-100/mo due to frequency)"
+    phase: "Phase 2 (Event-driven triggers preferred)"
+
+# ==============================================================================
+# CHANGE EXPECTATIONS BY SOURCE TYPE
+# ==============================================================================
+
+change_expectations:
+  mutable_tribunals:
+    tribunal_ids: ["SST-GD", "SST-AD"]
+    new_cases_per_month: "50-150 (SST-GD), 10-30 (SST-AD)"
+    content_changes_per_month: "2-5% of corpus (corrections, redactions)"
+    metadata_changes_per_month: "5-10% of corpus (docket updates, dates)"
+    cosmetic_changes: "10-20% (HTML formatting noise)"
+    total_meaningful_changes: "~60-180 cases/month requiring downstream processing"
+
+  immutable_courts:
+    tribunal_ids: ["FC", "FCA", "SCC"]
+    new_cases_per_month: "10-50 (FC), 5-20 (FCA), 1-5 (SCC)"
+    content_changes_per_month: "<0.1% (rare PDF re-issues)"
+    metadata_changes_per_month: "~1% (housekeeping updates)"
+    cosmetic_changes: "5-10% (CanLII HTML template changes)"
+    total_meaningful_changes: "~15-75 NEW cases/month; <5 updates to existing"
+
+# ==============================================================================
+# ADAPTIVE POLLING ALGORITHM (Phase 2 Enhancement)
+# ==============================================================================
+
+adaptive_polling:
+  description: "Dynamically adjust polling frequency based on observed change patterns"
+  enabled: false  # Phase 2 feature
+  algorithm:
+    - step: 1
+      action: "Track change_event statistics per scope_id over last 90 days"
+      metrics:
+        - "new_cases_detected"
+        - "content_changes_detected"
+        - "metadata_meaningful_changes_detected"
+        - "cosmetic_changes_only"
+    - step: 2
+      action: "Calculate change_rate = (meaningful_changes / poll_runs) over 90 days"
+    - step: 3
+      action: "Adjust polling frequency based on thresholds"
+      thresholds:
+        - condition: "change_rate > 0.10"
+          action: "Maintain current frequency or increase by 1 tier"
+        - condition: "change_rate between 0.01 and 0.10"
+          action: "Maintain current frequency"
+        - condition: "change_rate < 0.01"
+          action: "Reduce frequency by 1 tier (min: monthly)"
+        - condition: "change_rate == 0 for 180 days"
+          action: "Reduce to monthly sanity check"
+    - step: 4
+      action: "Apply SLO tier constraints (never violate max_staleness)"
+    - step: 5
+      action: "Log frequency adjustment as change_event for audit trail"
+
+  example:
+    scope_id: "FC-EN-2015-2020"
+    initial_frequency: "weekly"
+    observation_period: "90 days (13 polls)"
+    changes_detected:
+      new_cases: 0
+      content_changes: 0
+      cosmetic_changes: 2
+    change_rate: "0/13 = 0%"
+    recommendation: "Reduce to monthly"
+    constraint_check: "slo_tier=3 allows monthly"
+    final_decision: "Reduce to monthly polling"
+
+# ==============================================================================
+# IMMUTABILITY VALIDATION
+# ==============================================================================
+
+validation:
+  immutability_classification:
+    - check: "All SST-* tribunals must be classified as mutable"
+      rule: "tribunal_id starts with 'SST-' → immutability_class = 'mutable'"
+    - check: "All FC, FCA, SCC must be classified as immutable"
+      rule: "tribunal_id in ['FC', 'FCA', 'SCC'] → immutability_class = 'immutable'"
+    - check: "Mutable sources must have daily or higher polling frequency"
+      rule: "immutability_class='mutable' → polling_cadence in ['hourly', 'daily']"
+    - check: "Immutable sources can use reduced polling"
+      rule: "immutability_class='immutable' → polling_cadence in ['weekly', 'monthly']"
+
+  polling_schedule_validation:
+    - check: "SLO tier 1 requires hourly polling"
+      rule: "slo_tier=1 → polling_cadence='hourly'"
+    - check: "SLO tier 2 requires at least daily polling"
+      rule: "slo_tier=2 → polling_cadence in ['hourly', 'daily']"
+    - check: "SLO tier 3 can use any frequency"
+      rule: "slo_tier=3 → any polling_cadence allowed"
+
+# ==============================================================================
+# COST OPTIMIZATION STRATEGIES
+# ==============================================================================
+
+cost_optimization:
+  strategies:
+    - strategy: "Scope Splitting"
+      description: "Split large rolling windows into smaller, more focused scopes"
+      example: "SST-GD-EN-rolling-24mo → SST-GD-EN-rolling-12mo (recent) + SST-GD-EN-2023-2024 (historical)"
+      benefit: "Reduce API call volume for historical data"
+
+    - strategy: "Graduated Polling"
+      description: "Apply Rule 4 - reduce frequency for stable sources"
+      example: "FC-EN-2010-2015 shows 0% change rate → reduce to monthly"
+      benefit: "Save ~75% API calls for immutable sources"
+
+    - strategy: "Event-Driven Triggers (Phase 2)"
+      description: "Use CanLII RSS feeds or webhooks to detect changes"
+      benefit: "Eliminate polling for event-driven sources"
+      implementation: "Azure Event Grid + Logic Apps"
+
+    - strategy: "Batch Processing"
+      description: "Group multiple scopes in single poll run when possible"
+      example: "SST-GD-EN + SST-GD-FR polled together (same API call)"
+      benefit: "Reduce API overhead, share registry snapshots"
+
+# ==============================================================================
+# EXAMPLES & TEST CASES
+# ==============================================================================
+
+examples:
+  mutable_tribunal_lifecycle:
+    tribunal_id: "SST-GD"
+    scope_id: "SST-GD-EN-rolling-24mo"
+    day_0:
+      action: "Initial capture (bootstrap)"
+      frequency: "daily"
+      result: "150 cases ingested, 150 case_versions created"
+    day_1_to_30:
+      action: "Daily polling"
+      frequency: "daily"
+      typical_results:
+        - "2-5 new cases detected (structural)"
+        - "1-2 content changes (corrections)"
+        - "3-5 metadata changes (docket updates)"
+        - "10-15 cosmetic changes (ignored)"
+    day_31_onwards:
+      action: "Ongoing daily polling"
+      frequency: "daily"
+      maintenance: "Rolling window slides, oldest cases tombstoned"
+
+  immutable_court_lifecycle:
+    tribunal_id: "FC"
+    scope_id: "FC-EN-2020-2025"
+    day_0:
+      action: "Initial capture (bootstrap)"
+      frequency: "daily (during bootstrap only)"
+      result: "500 cases ingested over 2 weeks"
+    week_3_onwards:
+      action: "Reduce to weekly polling"
+      frequency: "weekly"
+      typical_results:
+        - "0-2 new cases detected (rare)"
+        - "0 content changes"
+        - "0-1 metadata changes (housekeeping)"
+        - "5-10 cosmetic changes (ignored)"
+    year_2_onwards:
+      action: "Reduce to monthly sanity check"
+      frequency: "monthly"
+      typical_results:
+        - "0 new cases (fixed window closed)"
+        - "0 content changes"
+        - "0-1 cosmetic changes"
+
+# ==============================================================================
+# VERSION HISTORY
+# ==============================================================================
+
+version_history:
+  - version: "1.0.0"
+    date: "2026-01-28"
+    changes:
+      - "Initial immutability class definitions (immutable/mutable/quasi-immutable)"
+      - "Polling frequency rules (PF-R1 to PF-R4)"
+      - "Concrete polling schedules (daily/weekly/monthly/hourly)"
+      - "Change expectations by source type"
+      - "Adaptive polling algorithm design (Phase 2)"
+      - "Cost optimization strategies"
